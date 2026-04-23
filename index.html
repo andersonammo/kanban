@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Tático - Kanban</title>
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --panel-bg: #0f1115;
+            --neon-cyan: #00f0ff;
+            --neon-pink: #ff0055;
+            --border-color: #1f2937;
+            --text-main: #e2e8f0;
+            --text-muted: #64748b;
+        }
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .glow-title {
+            color: var(--neon-cyan);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 1.5rem;
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+            margin: 0;
+        }
+        .support-contact {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            font-family: monospace;
+            border: 1px solid var(--border-color);
+            padding: 5px 15px;
+            border-radius: 4px;
+        }
+        
+        /* Layout do Kanban */
+        .kanban-board {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        .kanban-column {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+        }
+        .column-header {
+            padding: 15px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: center;
+        }
+        /* Cores das colunas */
+        #col-base .column-header { color: #94a3b8; border-bottom-color: #94a3b8; }
+        #col-sondagem .column-header { color: #f59e0b; border-bottom-color: #f59e0b; }
+        #col-negociacao .column-header { color: var(--neon-pink); border-bottom-color: var(--neon-pink); }
+        #col-fechamento .column-header { color: var(--neon-cyan); border-bottom-color: var(--neon-cyan); }
+        
+        .column-body {
+            padding: 10px;
+            flex-grow: 1;
+            overflow-y: auto;
+            min-height: 100px;
+        }
+        
+        /* Estilo dos Cards */
+        .kanban-card {
+            background: #181b21;
+            border: 1px solid #2d3748;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            cursor: grab;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .kanban-card:hover {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+            transform: translateY(-2px);
+        }
+        .kanban-card:active { cursor: grabbing; }
+        .card-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 5px; }
+        .card-phone { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; font-family: monospace; }
+        
+        .btn-action {
+            background: transparent;
+            border: 1px solid #334155;
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            width: 100%;
+            transition: 0.3s;
+        }
+        .btn-action:hover {
+            background: var(--neon-cyan);
+            color: var(--bg-dark);
+            border-color: var(--neon-cyan);
+            font-weight: bold;
+        }
+
+        #system-status {
+            font-family: monospace;
+            color: var(--neon-cyan);
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 class="glow-title">Liderança Tática | Funil</h1>
+        <div class="support-contact">Suporte: (44)7400-2557</div>
+    </header>
+
+    <div id="system-status">> Inicializando módulo neural. Aguardando sincronização...</div>
+
+    <div class="kanban-board">
+        <div class="kanban-column" id="col-base">
+            <div class="column-header">Base (Leads)</div>
+            <div class="column-body" id="Base" ondrop="soltarCard(event)" ondragover="permitirDrop(event)"></div>
+        </div>
+        <div class="kanban-column" id="col-sondagem">
+            <div class="column-header">Sondagem</div>
+            <div class="column-body" id="Sondagem" ondrop="soltarCard(event)" ondragover="permitirDrop(event)"></div>
+        </div>
+        <div class="kanban-column" id="col-negociacao">
+            <div class="column-header">Negociação</div>
+            <div class="column-body" id="Negociacao" ondrop="soltarCard(event)" ondragover="permitirDrop(event)"></div>
+        </div>
+        <div class="kanban-column" id="col-fechamento">
+            <div class="column-header">Fechamento</div>
+            <div class="column-body" id="Fechamento" ondrop="soltarCard(event)" ondragover="permitirDrop(event)"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO DA API ---
+        const API_URL = 'https://script.google.com/macros/s/AKfycbzciM5IA25tZ9CcRkwj0-okP5CQ0IG3wpmZeT40vbPGiCtovD3au5Ccgr9jTxcJhSc6/exec?tipo=crm_clientes'; 
+        
+        // --- 1. CARREGAR DADOS INICIAIS ---
+        async function inicializarCRM() {
+            try {
+                const resposta = await fetch(`${API_URL}?tipo=crm_clientes`);
+                const dados = await resposta.json();
+                
+                document.getElementById('system-status').innerText = `> Sincronização concluída. ${dados.length} alvos localizados.`;
+
+                dados.forEach(item => {
+                    const card = criarCard(item);
+                    // Decide em qual coluna o card vai cair (se estiver vazio ou inválido, vai pra Base)
+                    let colunaDestino = document.getElementById(item.status);
+                    if (!colunaDestino) colunaDestino = document.getElementById('Base');
+                    
+                    colunaDestino.appendChild(card);
+                });
+            } catch (erro) {
+                document.getElementById('system-status').innerText = '> [ERRO CRÍTICO] Falha na conexão com a central.';
+                document.getElementById('system-status').style.color = '#ef4444';
+            }
+        }
+
+        // --- 2. CONSTRUIR O CARD HTML ---
+        function criarCard(item) {
+            const card = document.createElement('div');
+            card.className = 'kanban-card';
+            card.draggable = true;
+            // Usamos o CPF ou Telefone como ID único do card no HTML
+            card.id = `card-${item.cpf || item.telefone}`; 
+            
+            // Salvamos os dados reais no card para usarmos na hora de arrastar
+            card.dataset.cpf = item.cpf;
+            card.dataset.telefone = item.telefone;
+
+            card.innerHTML = `
+                <div class="card-name">${item.cliente}</div>
+                <div class="card-phone">${item.telefone}</div>
+                <button class="btn-action" onclick="iniciarChat('${item.telefone}', '${item.cliente}')">Acessar Com. Visual</button>
+            `;
+
+            // Evento disparado quando o usuário começa a arrastar o card
+            card.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', card.id);
+                setTimeout(() => card.style.opacity = '0.4', 0);
+            });
+
+            // Evento disparado quando o usuário solta o card
+            card.addEventListener('dragend', () => {
+                card.style.opacity = '1';
+            });
+
+            return card;
+        }
+
+        // --- 3. LÓGICA DE DRAG AND DROP ---
+        function permitirDrop(ev) {
+            ev.preventDefault(); // Permite que o elemento seja solto aqui
+        }
+
+        async function soltarCard(ev) {
+            ev.preventDefault();
+            const cardId = ev.dataTransfer.getData('text/plain');
+            const cardElement = document.getElementById(cardId);
+            
+            // Descobre a coluna destino (a div column-body mais próxima do local solto)
+            const colunaDestino = ev.target.closest('.column-body');
+            
+            if (colunaDestino && cardElement) {
+                colunaDestino.appendChild(cardElement); // Move visualmente na hora
+                
+                const novoStatus = colunaDestino.id;
+                const cpf = cardElement.dataset.cpf;
+                const telefone = cardElement.dataset.telefone;
+
+                document.getElementById('system-status').innerText = '> Salvando alteração de quadrante...';
+
+                // Envia a ordem de gravação para o Google Sheets
+                try {
+                    const payload = {
+                        tipo: 'crm_atualizar_status',
+                        cpf: cpf,
+                        telefone: telefone,
+                        novoStatus: novoStatus
+                    };
+
+                    await fetch(API_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+
+                    document.getElementById('system-status').innerText = '> Banco de dados atualizado.';
+                } catch (e) {
+                    document.getElementById('system-status').innerText = '> [ERRO] Desconexão ao salvar. Verifique o registro.';
+                }
+            }
+        }
+
+        // --- 4. ABRIR WHATSAPP ---
+        function iniciarChat(telefone, nomeCliente) {
+            let numeroLimpo = String(telefone).replace(/\D/g, '');
+            if (!numeroLimpo.startsWith('55') && numeroLimpo.length <= 11) numeroLimpo = '55' + numeroLimpo;
+            const primeiroNome = nomeCliente.split(' ')[0]; 
+            const mensagem = encodeURIComponent(`Olá ${primeiroNome}, tudo bem?`);
+            window.open(`https://wa.me/${numeroLimpo}?text=${mensagem}`, '_blank');
+        }
+
+        window.onload = inicializarCRM;
+    </script>
+</body>
+</html>
