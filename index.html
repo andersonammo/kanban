@@ -2,8 +2,17 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Terminal Tático - Kanban</title>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js"></script>
+    <script>
+        // Configura o sistema para entender o toque dos dedos no mobile
+        MobileDragDrop.polyfill({ holdToDrag: 300 }); // Segurar 300ms para ativar o card
+        window.addEventListener('touchmove', function() {}, {passive: false});
+    </script>
+
     <style>
         :root {
             --bg-dark: #050505; --panel-bg: #0f1115; --neon-cyan: #00f0ff;
@@ -30,7 +39,6 @@
         .card-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 5px; pointer-events: none; }
         .card-phone { color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; font-family: monospace; pointer-events: none; }
         
-        /* Animação do Selo Tático */
         .badge-alert {
             position: absolute; top: -8px; right: -8px; background-color: var(--alert-red); color: white;
             font-size: 0.65rem; font-weight: bold; padding: 3px 8px; border-radius: 12px;
@@ -70,6 +78,39 @@
         .nota-item { background: #14171d; border-left: 3px solid var(--neon-cyan); padding: 10px; border-radius: 0 4px 4px 0; margin-bottom: 10px; }
         .nota-meta { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 5px; font-family: monospace; }
         .nota-texto { font-size: 0.85rem; line-height: 1.4; white-space: pre-wrap; }
+
+        /* ========================================= */
+        /* MODO TÁTICO MOBILE (RESPONSIVIDADE)       */
+        /* ========================================= */
+        @media (max-width: 768px) {
+            body { padding: 10px; height: 100dvh; }
+            header { flex-direction: column; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+            .glow-title { font-size: 1.2rem; }
+            
+            /* Converte a grade em abas de rolagem horizontal */
+            .kanban-board {
+                display: flex;
+                flex-direction: row;
+                overflow-x: auto;
+                scroll-snap-type: x mandatory;
+                padding-bottom: 15px;
+            }
+            .kanban-column {
+                min-width: 85vw; /* Ocupa 85% da tela do celular */
+                scroll-snap-align: center;
+                margin-right: 10px;
+            }
+            
+            /* Ajusta a barra de rolagem para o visual Cyberpunk */
+            .kanban-board::-webkit-scrollbar { height: 4px; }
+            .kanban-board::-webkit-scrollbar-thumb { background: var(--neon-cyan); border-radius: 4px; }
+
+            /* Ajusta o Modal (Diário) para ocupar a tela inteira no celular */
+            .modal-overlay { width: 100%; right: -100%; border-left: none; border-top: 2px solid var(--neon-cyan); }
+            
+            /* Melhoria no botão de "Auditar IA" no celular para não espremer */
+            .modal-content > div:nth-child(2) > div { flex-direction: column; }
+        }
     </style>
 </head>
 <body>
@@ -106,7 +147,10 @@
                 <h2 class="modal-title" id="diario-nome">Cliente</h2>
                 <div style="font-family: monospace; color: var(--text-muted); font-size: 0.8rem;" id="diario-id"></div>
             </div>
-            <button class="close-btn" onclick="fecharDiario()">&times;</button>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn-action" style="border-color: #ef4444; color: #ef4444; margin: 0;" onclick="finalizarAtendimento()">Encerrar</button>
+                <button class="close-btn" onclick="fecharDiario()">&times;</button>
+            </div>
         </div>
         <div class="modal-content">
             
@@ -120,7 +164,13 @@
 
             <div>
                 <textarea id="nova-nota" placeholder="Registre dores, objeções ou o resumo da sondagem..."></textarea>
-                <button class="btn-action" style="margin-top: 10px;" onclick="salvarNota()">Criptografar Relatório</button>
+                
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button class="btn-action" style="flex: 1;" onclick="salvarNota()">Criptografar Relatório</button>
+                    <button class="btn-action" style="flex: 1; border-color: #f59e0b; color: #f59e0b;" onclick="auditarComIA()">Auditar com IA</button>
+                </div>
+
+                <div id="ia-feedback" style="display:none; padding: 12px; background: rgba(245, 158, 11, 0.05); border-left: 3px solid #f59e0b; margin-top: 15px; font-size: 0.85rem; color: #fbcfe8; line-height: 1.5;"></div>
             </div>
             
             <div style="border-bottom: 1px solid var(--border-color); margin: 5px 0;"></div>
@@ -131,11 +181,12 @@
     </div>
 
     <script>
+        // API configurada
         const API_URL = 'https://script.google.com/macros/s/AKfycbzciM5IA25tZ9CcRkwj0-okP5CQ0IG3wpmZeT40vbPGiCtovD3au5Ccgr9jTxcJhSc6/exec'; 
         let clienteAtivo = null; 
 
         // Adquirir a data atual no formato YYYY-MM-DD para o comparador do selo
-        const hojeLocal = new Date().toLocaleDateString("en-CA"); // Padrão ISO YYYY-MM-DD de forma segura
+        const hojeLocal = new Date().toLocaleDateString("en-CA");
 
         async function inicializarCRM() {
             try {
@@ -143,7 +194,6 @@
                 const dados = await resposta.json();
                 document.getElementById('system-status').innerText = `> Sincronização concluída. ${dados.length} alvos localizados.`;
 
-                // Limpa os quadros antes de recarregar
                 document.querySelectorAll('.column-body').forEach(col => col.innerHTML = '');
 
                 dados.forEach(item => {
@@ -168,7 +218,6 @@
             
             const idRegistro = item.cpf || item.telefone;
 
-            // Inteligência do Selo: Acende se tiver data e se for hoje ou atrasado
             let badgeHtml = '';
             if (item.retorno && item.retorno <= hojeLocal && item.status !== 'Fechamento') {
                 badgeHtml = '<div class="badge-alert">! AÇÃO REQUERIDA</div>';
@@ -199,7 +248,6 @@
                 colunaDestino.appendChild(cardElement); 
                 document.getElementById('system-status').innerText = '> Salvando alteração de quadrante...';
                 
-                // Se arrastou para Fechamento, o selo apaga automaticamente no visual
                 if(colunaDestino.id === 'Fechamento' && cardElement.querySelector('.badge-alert')) {
                     cardElement.querySelector('.badge-alert').style.display = 'none';
                 }
@@ -226,12 +274,21 @@
             document.getElementById('diario-nome').innerText = nomeCliente;
             document.getElementById('diario-id').innerText = `ID: ${idBusca}`;
             document.getElementById('nova-nota').value = '';
-            document.getElementById('data-retorno').value = ''; // Limpa o calendário
+            document.getElementById('data-retorno').value = ''; 
+            
+            const painelIA = document.getElementById('ia-feedback');
+            painelIA.style.display = 'none';
+            painelIA.innerHTML = '';
+
             document.getElementById('historico-notas').innerHTML = '<span style="color:var(--neon-cyan); font-family:monospace;">> Decodificando arquivos...</span>';
             
             document.getElementById('diario-modal').classList.add('open');
-            document.getElementById('main-board').style.marginRight = '420px'; 
-
+            
+            // Inteligência tática: só espreme o painel se for em tela de computador.
+            if (window.innerWidth > 768) {
+                document.getElementById('main-board').style.marginRight = '420px'; 
+            }
+            
             try {
                 const resposta = await fetch(`${API_URL}?tipo=crm_buscar_notas&id_cliente=${idBusca}`);
                 const notas = await resposta.json();
@@ -298,7 +355,6 @@
             const btn = event.target;
             btn.innerText = 'Armando...';
             
-            // Pega o CPF e Telefone do card ativo para enviar pro Google Sheets
             const cardAtivo = document.getElementById(`card-${clienteAtivo}`);
             const cpf = cardAtivo ? cardAtivo.dataset.cpf : "";
             const telefone = cardAtivo ? cardAtivo.dataset.telefone : clienteAtivo;
@@ -317,12 +373,80 @@
                 document.getElementById('system-status').innerText = '> Alerta configurado com sucesso. Recarregando grid...';
                 btn.innerText = 'ARMADO ✓';
                 
-                // Recarrega o CRM para o selo atualizar no Kanban
                 setTimeout(inicializarCRM, 1000); 
 
             } catch (e) {
                 alert('Erro ao salvar o alerta no banco de dados.');
                 btn.innerText = 'Armar';
+            }
+        }
+
+        // --- FUNÇÃO PARA ARQUIVAR / ENCERRAR ALVO ---
+        async function finalizarAtendimento() {
+            if(!confirm('Atenção: Deseja arquivar este cliente e retirá-lo do painel tático?')) return;
+
+            const btn = event.target;
+            btn.innerText = 'Arquivando...';
+
+            const cardAtivo = document.getElementById(`card-${clienteAtivo}`);
+            const cpf = cardAtivo ? cardAtivo.dataset.cpf : "";
+            const telefone = cardAtivo ? cardAtivo.dataset.telefone : clienteAtivo;
+
+            fecharDiario();
+            document.getElementById('system-status').innerText = '> Arquivando alvo e limpando setor...';
+
+            try {
+                await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ 
+                        tipo: 'crm_atualizar_status', 
+                        cpf: cpf, 
+                        telefone: telefone, 
+                        novoStatus: 'Finalizado' 
+                    })
+                });
+                
+                setTimeout(inicializarCRM, 1000); 
+
+            } catch (e) {
+                alert('Erro ao arquivar o cliente no banco de dados.');
+            }
+        }
+
+        // --- FUNÇÃO DO MENTOR DE IA ---
+        async function auditarComIA() {
+            const texto = document.getElementById('nova-nota').value.trim();
+            const painelIA = document.getElementById('ia-feedback');
+            const btn = event.target;
+
+            if (!texto) {
+                alert("Digite o resumo do atendimento na caixa antes de pedir a auditoria.");
+                return;
+            }
+
+            btn.innerText = 'Processando...';
+            btn.disabled = true;
+            painelIA.style.display = 'block';
+            painelIA.innerHTML = '<span style="color: #f59e0b; font-family: monospace;">> Analisando táticas aplicadas...</span>';
+
+            try {
+                const resposta = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({ tipo: 'crm_auditoria_ia', texto: texto })
+                });
+                
+                const resultado = await resposta.json();
+                
+                if (resultado.status === "Sucesso") {
+                    painelIA.innerHTML = `<strong>MENTOR IA:</strong><br>${resultado.feedback}`;
+                } else {
+                    painelIA.innerHTML = `[ERRO] ${resultado.mensagem}`;
+                }
+            } catch (e) {
+                painelIA.innerHTML = '[ERRO] Falha de conexão com os servidores da IA.';
+            } finally {
+                btn.innerText = 'Auditar com IA';
+                btn.disabled = false;
             }
         }
 
